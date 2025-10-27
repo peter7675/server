@@ -1,0 +1,47 @@
+service: serverless-email-api
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.9
+  stage: ${opt:stage, 'dev'}
+  region: ${env:AWS_REGION, 'us-east-1'}
+  environment:
+    # The Lambda will read API keys from this Secrets Manager secret.
+    API_SECRET_NAME: ${self:service}-${self:provider.stage}-api-keys
+    # FROM_EMAIL should be a verified SES identity in sandbox environments.
+    FROM_EMAIL: ${env:FROM_EMAIL}
+    AWS_REGION: ${env:AWS_REGION, 'us-east-1'}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - ses:SendEmail
+        - ses:SendRawEmail
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource:
+        - "Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:service}-${self:provider.stage}-api-keys*"
+
+plugins:
+  - serverless-offline
+
+functions:
+  sendEmail:
+    handler: handler.send_email
+    events:
+      - http:
+          path: send-email
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    ApiKeysSecret:
+      Type: AWS::SecretsManager::Secret
+      Properties:
+        Name: ${self:service}-${self:provider.stage}-api-keys
+        Description: "API keys for serverless-email-api (managed via manage_keys.py)"
+        # Initial secret string contains a placeholder key you should rotate.
+        SecretString: '{"keys":[{"key":"REPLACE_ME_WITH_INITIAL_KEY","created_at":"2025-01-01T00:00:00Z","active":true}]}'
